@@ -465,3 +465,88 @@ for i, ticker in enumerate(cols_ordered):
     )
     cell = price_cols[i % NUM_COLS_PRICE].container()
     cell.altair_chart(chart, use_container_width=True)
+
+# -----------------------------------------------------------------------
+## 株主視点の主要指標テーブル
+# -----------------------------------------------------------------------
+st.subheader("株主向けファンダメンタル指標")
+
+# 最終更新日時を保持するセッションステート
+if "shareholder_metrics_last_updated" not in st.session_state:
+    st.session_state.shareholder_metrics_last_updated = "未取得"
+
+@st.cache_data(show_spinner=False)
+def load_shareholder_metrics(tickers):
+    import datetime
+    import yfinance as yf
+
+    data = []
+    
+    for t in tickers:
+        try:
+            ticker_obj = yf.Ticker(t)
+            info = ticker_obj.info
+            
+            if not info:
+                 st.warning(f"{t} の財務データが空です（データなし）")
+                 continue
+                 
+            market_cap_trillion = info.get("marketCap", 0) / 1e12 if info.get("marketCap") else None
+            
+            data.append({
+                "銘柄": STOCKS.get(t, t),
+                "PER（予想）": info.get("forwardPE"),
+                "PBR": info.get("priceToBook"),
+                "PSR": info.get("priceToSalesTrailing12Months"),
+                "ROE（%）": info.get("returnOnEquity", 0) * 100 if info.get("returnOnEquity") else None,
+                "営業利益率（%）": info.get("operatingMargins", 0) * 100 if info.get("operatingMargins") else None,
+                "純利益率（%）": info.get("profitMargins", 0) * 100 if info.get("profitMargins") else None,
+                "売上成長率（%）": info.get("revenueGrowth", 0) * 100 if info.get("revenueGrowth") else None,
+                "利益成長率（%）": info.get("earningsGrowth", 0) * 100 if info.get("earningsGrowth") else None,
+                
+                # ★ 修正箇所: 配当利回りから * 100 を削除
+                "配当利回り（%）": info.get("dividendYield") if info.get("dividendYield") else None, 
+                
+                "配当性向（%）": info.get("payoutRatio", 0) * 100 if info.get("payoutRatio") else None,
+                "負債比率（D/E）": info.get("debtToEquity"),
+                "流動比率": info.get("currentRatio"),
+                "時価総額（兆円）": market_cap_trillion,
+            })
+        except Exception as e:
+            st.warning(f"{t} の財務データ取得中に例外が発生しました: {e}")
+            
+    df = pd.DataFrame(data)
+    
+    st.session_state.shareholder_metrics_last_updated = datetime.datetime.now().strftime("%Y年%m月%d日 %H:%M")
+    
+    return df
+
+shareholder_df = load_shareholder_metrics(tickers)
+
+# ★ データ取得日時を表示する
+st.caption(f"データ取得日時（キャッシュ最終更新）: **{st.session_state.shareholder_metrics_last_updated}**")
+
+if shareholder_df.empty:
+    st.warning("株主向け指標データを取得できませんでした。")
+else:
+    st.dataframe(
+        shareholder_df.style.format({
+            "PER（予想）": "{:.1f}",
+            "PBR": "{:.2f}",
+            "PSR": "{:.2f}",
+            "ROE（%）": "{:.1f}",
+            "営業利益率（%）": "{:.1f}",
+            "純利益率（%）": "{:.1f}",
+            "売上成長率（%）": "{:.1f}",
+            "利益成長率（%）": "{:.1f}",
+            
+            # 配当利回り（%）は、*100を削除したため、適切にフォーマットされます
+            "配当利回り（%）": "{:.2f}",
+            
+            "配当性向（%）": "{:,.0f}",
+            "負債比率（D/E）": "{:.2f}",
+            "流動比率": "{:.1f}",
+            "時価総額（兆円）": "{:,.2f}",
+        }, na_rep='-'),
+        width='stretch',
+    )
