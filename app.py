@@ -3,6 +3,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import altair as alt
+import datetime
 
 # --- ページ設定 ---
 st.set_page_config(
@@ -108,6 +109,15 @@ COMPARISON_PERIODS = {
     "5年": "5y",
 }
 
+# ★ 修正箇所1: 固定目盛の定義
+FIXED_DOMAINS = {
+    "1か月": [-10, 10],
+    "1年": [-40, 60],
+    "3年": [-100, 400],
+    "5年": [-100, 600],
+}
+# ★ 修正箇所1: ここまで
+
 # --- 表示期間マップ ---
 period_map = {
     "5日": "5d",
@@ -206,8 +216,8 @@ st.subheader("騰落率推移チャート %")
 st.markdown(
     """
     <div style="font-size:14px; margin-top:-10px;">
-        <span style="color:#9BB7D0; font-weight:bold;">■ 日経平均</span>　
-        <span style="color:#D3D3D3; font-weight:bold;">■ セクター他社平均</span>
+        <span style="color:#9BB7D0; font-weight:bold;">■ 日経平均</span>　
+        <span style="color:#D3D3D3; font-weight:bold;">■ セクター他社平均</span>
     </div>
     """,
     unsafe_allow_html=True
@@ -225,6 +235,13 @@ if len(tickers) > 1 and comparison_returns_data:
     period_domains = {}
 
     for period_label, period_data in comparison_returns_data.items():
+        
+        # ★ 修正箇所2: 固定目盛を優先的に使用
+        if period_label in FIXED_DOMAINS:
+            period_domains[period_label] = FIXED_DOMAINS[period_label]
+            continue
+        # ★ 修正箇所2: ここまで
+        
         if not period_data.empty:
             
             # 1. 全銘柄の最小・最大
@@ -515,8 +532,11 @@ def load_shareholder_metrics(tickers):
             if not info:
                  st.warning(f"{t} の財務データが空です（データなし）")
                  continue
-                 
+            
             market_cap_trillion = info.get("marketCap", 0) / 1e12 if info.get("marketCap") else None
+            
+            # 配当利回り（%）は、yfinanceの戻り値（比率）に100を掛けてパーセント表示に修正
+            dividend_yield_percent = info.get("dividendYield", 0) * 100 if info.get("dividendYield") else None
             
             data.append({
                 "銘柄": STOCKS.get(t, t),
@@ -529,8 +549,7 @@ def load_shareholder_metrics(tickers):
                 "売上成長率（%）": info.get("revenueGrowth", 0) * 100 if info.get("revenueGrowth") else None,
                 "利益成長率（%）": info.get("earningsGrowth", 0) * 100 if info.get("earningsGrowth") else None,
                 
-                # ★ 修正箇所: 配当利回りから * 100 を削除
-                "配当利回り（%）": info.get("dividendYield") if info.get("dividendYield") else None, 
+                "配当利回り（%）": dividend_yield_percent, # 修正後の値を使用
                 
                 "配当性向（%）": info.get("payoutRatio", 0) * 100 if info.get("payoutRatio") else None,
                 "負債比率（D/E）": info.get("debtToEquity"),
@@ -565,8 +584,7 @@ else:
             "売上成長率（%）": "{:.1f}",
             "利益成長率（%）": "{:.1f}",
             
-            # 配当利回り（%）は、*100を削除したため、適切にフォーマットされます
-            "配当利回り（%）": "{:.2f}",
+            "配当利回り（%）": "{:.2f}", # *100したため、単なる数値としてフォーマット
             
             "配当性向（%）": "{:,.0f}",
             "負債比率（D/E）": "{:.2f}",
